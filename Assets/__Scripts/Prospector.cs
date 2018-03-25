@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
@@ -21,10 +22,10 @@ public class Prospector : MonoBehaviour
 
     public float reloadDelay = 1f; // The delay between rounds
 
-    public Vector3 fsPosMid = new Vector3(0.5f, 0.90f, 0);
-    public Vector3 fsPosRun = new Vector3(0.5f, 0.75f, 0);
-    public Vector3 fsPosMid2 = new Vector3(0.5f, 0.5f, 0);
-    public Vector3 fsPosEnd = new Vector3(1.0f, 0.65f, 0);
+    public Vector2 fsPosMid = new Vector2(0.5f, 0.90f);
+    public Vector2 fsPosRun = new Vector2(0.5f, 0.75f);
+    public Vector2 fsPosMid2 = new Vector2(0.4f, 1.0f);
+    public Vector2 fsPosEnd = new Vector2(0.5f, 0.95f);
 
     public Deck deck;
     public TextAsset deckXML;
@@ -47,52 +48,60 @@ public class Prospector : MonoBehaviour
 
     public FloatingScore fsRun;
 
-    public GUIText GTGameOver;
-    public GUIText GTRoundResult;
+	public Text gameOverText, roundResultText, highScoreText;
 
     void Awake()
     {
         S = this; // Set up a Singleton for Prospector
-        // Check for a high score in PlayerPrefs
-        if (PlayerPrefs.HasKey("ProspectorHighScore"))
-        {
-            HIGH_SCORE = PlayerPrefs.GetInt("ProspectorHighScore");
-        }
-        // Add the score from last round, which will be >0 if it was a win
-        score += SCORE_FROM_PREV_ROUND;
-        // And reset the SCORE_FROM_PREV_ROUND
-        SCORE_FROM_PREV_ROUND = 0;
 
-        // Set up the GUITexts that show at the end of the round
-        // Get the GUIText Components
-        GameObject go = GameObject.Find("GameOver");
-        if (go != null)
-        {
-            GTGameOver = go.GetComponent<GUIText>();
-        }
-        go = GameObject.Find("RoundResult");
-        if (go != null)
-        {
-            GTRoundResult = go.GetComponent<GUIText>();
-        }
-        // Make them invisible
-        ShowResultGTs(false);
-        go = GameObject.Find("HighScore");
-        string hScore = "High Score: " + Utils.AddCommasToNumber(HIGH_SCORE);
-        go.GetComponent<GUIText>().text = hScore;
+		if (PlayerPrefs.HasKey("ProspectorHighScore"))
+		{
+			HIGH_SCORE = PlayerPrefs.GetInt("ProspectorHighScore");
+		}
+
+		score += SCORE_FROM_PREV_ROUND;
+		SCORE_FROM_PREV_ROUND = 0;
+
+		SetUpUITexts();
     }
 
-    void ShowResultGTs(bool show)
+	void SetUpUITexts()
+	{
+		GameObject go = GameObject.Find("HighScore");
+		if (go != null)
+		{
+			highScoreText = go.GetComponent<Text>();
+		}
+		int highScore = Prospector.HIGH_SCORE;
+		string hScore = "High Score: "+Utils.AddCommasToNumber(highScore);
+		go.GetComponent<Text>().text = hScore;
+
+		go = GameObject.Find("GameOver");
+		if (go != null)
+		{
+			gameOverText = go.GetComponent<Text>();
+		}
+
+		go = GameObject.Find("RoundResult");
+		if (go != null)
+		{
+			roundResultText = go.GetComponent<Text>();
+		}
+
+		ShowResultUIs(false);
+	}
+
+    void ShowResultUIs(bool show)
     {
-        GTGameOver.gameObject.SetActive(show);
-        GTRoundResult.gameObject.SetActive(show);
+		gameOverText.gameObject.SetActive(show);
+		roundResultText.gameObject.SetActive(show);
     }
 
     public List<CardProspector> drawPile;
 
     void Start()
     {
-        Scoreboard.S.score = score;
+		Scoreboard.S.score = score;
 
         deck = GetComponent<Deck>(); // Get the Deck
         deck.InitDeck(deckXML.text); // Pass DeckXML to it
@@ -208,6 +217,7 @@ public class Prospector : MonoBehaviour
                 MoveToTarget(Draw());  // Moves the next drawn card to the target
                 UpdateDrawPile();      // Restacks the drawPile
                 ScoreManager(ScoreEvent.draw);
+				FloatingScoreHandler(ScoreEvent.draw);
                 break;
             case CardState.tableau:
                 // Clicking a card in the tableau will check if it's a valid play
@@ -228,6 +238,7 @@ public class Prospector : MonoBehaviour
                 MoveToTarget(cd);   // Make it the target card
                 SetTableauFaces();  // Update tableau card face-ups
                 ScoreManager(ScoreEvent.mine);
+				FloatingScoreHandler(ScoreEvent.mine);
                 break;
         }
 
@@ -239,14 +250,16 @@ public class Prospector : MonoBehaviour
     void MoveToDiscard(CardProspector cd)
     {
         // Set the state of the card to discard
-        cd.state = CardState.discard;
+        //cd.state = CardState.discard;
         discardPile.Add(cd);  // Add it to the discardPile List<>
         cd.transform.parent = layoutAnchor; // Update its transform parent
-        cd.transform.localPosition = new Vector3(
+		Vector3 endPosition = new Vector3(
             layout.multiplier.x * layout.discardPile.x,
             layout.multiplier.y * layout.discardPile.y,
             -layout.discardPile.layerID + 0.5f);
         // ^ Position it on the discardPile
+		cd.MoveTo(endPosition);
+		cd.state = CardState.toDiscard;
         cd.faceUp = true;
         // Place it on top of the pile for depth sorting
         cd.SetSortingLayerName(layout.discardPile.layerName);
@@ -259,13 +272,15 @@ public class Prospector : MonoBehaviour
         // If there is currently a target card, move it to discardPile
         if (target != null) MoveToDiscard(target);
         target = cd; // cd is the new target
-        cd.state = CardState.target;
+        //cd.state = CardState.target;
         cd.transform.parent = layoutAnchor;
         // Move to the target position
-        cd.transform.localPosition = new Vector3(
+		Vector3 endPosition = new Vector3(
             layout.multiplier.x * layout.discardPile.x,
             layout.multiplier.y * layout.discardPile.y,
             -layout.discardPile.layerID);
+		cd.MoveTo(endPosition);
+		cd.state = CardState.toTarget;
         cd.faceUp = true; // Make it face-up
         // Set the depth sorting
         cd.SetSortingLayerName(layout.discardPile.layerName);
@@ -364,13 +379,14 @@ public class Prospector : MonoBehaviour
         if (won)
         {
             ScoreManager(ScoreEvent.gameWin);      // This replaces the old line
+			FloatingScoreHandler(ScoreEvent.gameWin);
         }
         else
         {
             ScoreManager(ScoreEvent.gameLoss);     // This replaces the old line
-                                                   // Reload the scene, resetting the game
-
+			FloatingScoreHandler(ScoreEvent.gameLoss);
         }
+		// Reload the scene, resetting the game
         // Reload the scene in reloadDelay seconds
         // This will give the score a moment to travel
         Invoke("ReloadLevel", reloadDelay);
@@ -388,7 +404,7 @@ public class Prospector : MonoBehaviour
     // ScoreManager handles all of the scoring
     void ScoreManager(ScoreEvent sEvt)
     {
-        List<Vector3> fsPts;
+        List<Vector2> fsPts;
 
         switch (sEvt)
         {
@@ -403,7 +419,7 @@ public class Prospector : MonoBehaviour
                 if (fsRun != null)
                 {
                     // Create points for the Bezier curve
-                    fsPts = new List<Vector3>();
+                    fsPts = new List<Vector2>();
 
                     fsPts.Add(fsPosRun);
                     fsPts.Add(fsPosMid2);
@@ -424,7 +440,7 @@ public class Prospector : MonoBehaviour
                 Vector3 p0 = Input.mousePosition;
                 p0.x /= Screen.width;
                 p0.y /= Screen.height;
-                fsPts = new List<Vector3>();
+                fsPts = new List<Vector2>();
                 fsPts.Add(p0);
                 fsPts.Add(fsPosMid);
                 fsPts.Add(fsPosRun);
@@ -445,28 +461,28 @@ public class Prospector : MonoBehaviour
         switch (sEvt)
         {
             case ScoreEvent.gameWin:
-                GTGameOver.text = "Round Over";
+                gameOverText.text = "Round Over";
                 // If it's a win, add the score to the next round
                 // static fields are NOT reset by Application.LoadLevel()
                 Prospector.SCORE_FROM_PREV_ROUND = score;
                 print("You won this round! Round score: " + score);
-                GTRoundResult.text = "You won this round!\nRound Score: " + score;
-                ShowResultGTs(true);
+                roundResultText.text = "You won this round!\nRound Score: " + score;
+                ShowResultUIs(true);
                 break;
             case ScoreEvent.gameLoss:
-                GTGameOver.text = "Game Over";
+                gameOverText.text = "Game Over";
                 // If it's a loss, check against the high score
                 if (Prospector.HIGH_SCORE <= score)
                 {
                     print("You got the high score! High score: " + score);
                     string sRR = "You got the high score!\nHigh score: " + score;
-                    GTRoundResult.text = sRR;
+                    roundResultText.text = sRR;
                     Prospector.HIGH_SCORE = score;
                     PlayerPrefs.SetInt("ProspectorHighScore", score);
                 }
                 else
                 {
-                    GTRoundResult.text = "Your final score was: " + score;
+                    roundResultText.text = "Your final score was: " + score;
                     print("Your final score for the game was: " + score);
                 }
                 break;
@@ -475,4 +491,55 @@ public class Prospector : MonoBehaviour
                 break;
         }
     }
+
+	//Handle FloatingScore Movement
+	void FloatingScoreHandler(ScoreEvent evt)
+	{
+		List<Vector2> fsPts;
+		switch (evt)
+		{
+			//Same things need to happen whether it's a draw, a win, or a loss
+		case ScoreEvent.draw:
+		case ScoreEvent.gameWin:
+		case ScoreEvent.gameLoss:
+			//Add fsRun to the Scoreboard Score
+			if (fsRun != null)
+			{
+				//Create points for the Bezier curve
+				fsPts = new List<Vector2>();
+				fsPts.Add(fsPosRun);
+				fsPts.Add(fsPosMid2);
+				fsPts.Add(fsPosEnd);
+				fsRun.reportFinishTo = Scoreboard.S.gameObject;
+				fsRun.Init(fsPts, 0, 1);
+				//Also adjust the fontSize
+				fsRun.fontSizes = new List<float>(new float[] {28,26,4});
+				fsRun = null; //Clear fsRun so it's created again
+			}
+			break;
+		case ScoreEvent.mine: //Remove a mine card
+			//Create a FloatingScore for this score
+			FloatingScore fs;
+			//Move it from the mousePosition to fsPosRun
+			Vector2 p0 = Input.mousePosition;
+			p0.x /= Screen.width;
+			p0.y /= Screen.height;
+			fsPts = new List<Vector2>();
+			fsPts.Add(p0);
+			fsPts.Add(fsPosMid);
+			fsPts.Add(fsPosRun);
+			fs = Scoreboard.S.CreateFloatingScore(chain, fsPts);
+			fs.fontSizes = new List<float>(new float[] {4,50,28});
+			if (fsRun == null)
+			{
+				fsRun = fs;
+				fsRun.reportFinishTo = null;
+			}
+			else
+			{
+				fs.reportFinishTo = fsRun.gameObject;
+			}
+			break;
+		}
+	}
 }

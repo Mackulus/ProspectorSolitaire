@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
 // An enum to track the possible states of a FloatingScore
@@ -13,9 +14,11 @@ public enum FSState
 public class FloatingScore : MonoBehaviour
 {
     public FSState state = FSState.idle;
+
     [SerializeField]
     private int _score = 0; // The score field
     public string scoreString;
+
     // The score property also sets scoreString when set
     public int score
     {
@@ -26,22 +29,33 @@ public class FloatingScore : MonoBehaviour
         set
         {
             _score = value;
-            scoreString = Utils.AddCommasToNumber(_score);
-            GetComponent<GUIText>().text = scoreString;
+			scoreString = _score.ToString("N0"); // "N0" adds commas to the num
+            GetComponent<Text>().text = scoreString;
         }
     }
-    public List<Vector3> bezierPts; // Bezier points for movement
+    public List<Vector2> bezierPts; // Bezier points for movement
     public List<float> fontSizes; // Bezier points for font scaling
     public float timeStart = -1f;
     public float timeDuration = 1f;
     public string easingCurve = Easing.InOut; // Uses Easing in Utils.cs
-                                             // The GameObject that will receive the SendMessage when this is done moving
+    
+	// The GameObject that will receive the SendMessage when this is done moving
     public GameObject reportFinishTo = null;
+
+	private RectTransform rectTrans;
+	private Text txt;
+
+
     // Set up the FloatingScore and movement
     // Note the use of parameter defaults for eTimeS & eTimeD
-    public void Init(List<Vector3> ePts, float eTimeS = 0, float eTimeD = 1)
+    public void Init(List<Vector2> ePts, float eTimeS = 0, float eTimeD = 1)
     {
-        bezierPts = new List<Vector3>(ePts);
+		rectTrans = GetComponent<RectTransform>();
+		rectTrans.anchoredPosition = Vector2.zero;
+
+		txt = GetComponent<Text>();
+
+        bezierPts = new List<Vector2>(ePts);
         if (ePts.Count == 1)
         { // If there's only one point
             // ...then just go there.
@@ -73,8 +87,7 @@ public class FloatingScore : MonoBehaviour
         if (u < 0)
         { // If u<0, then we shouldn't move yet.
             state = FSState.pre;
-            // Move to the initial point
-            transform.position = bezierPts[0];
+			txt.enabled = false; //Hide the score initially
         }
         else
         {
@@ -101,16 +114,18 @@ public class FloatingScore : MonoBehaviour
             {
                 // 0<=u<1, which means that this is active and moving
                 state = FSState.active;
+				txt.enabled = true;
             }
             // Use Bezier curve to move this to the right point
-            Vector3 pos = Utils.Bezier(uC, bezierPts);
-            transform.position = pos;
+            Vector2 pos = Utils.Bezier(uC, bezierPts);
+            //RectTransform anchors can be used to position UI objects relative to total size of the screen
+			rectTrans.anchorMin = rectTrans.anchorMax = pos;
             if (fontSizes != null && fontSizes.Count > 0)
             {
                 // If fontSizes has values in it
                 // ...then adjust the fontSize of this GUIText
                 int size = Mathf.RoundToInt(Utils.Bezier(uC, fontSizes));
-                GetComponent<GUIText>().fontSize = size;
+                GetComponent<Text>().fontSize = size;
             }
         }
     }
